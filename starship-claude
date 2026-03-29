@@ -155,13 +155,18 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
       (if .context_window.current_usage == null then "" else (.context_window.current_usage.cache_read_input_tokens // 0) end), # 21
       # Computed values (indexes 22-23)
       (.model.display_name // .model.id // ""),                     # 22 - raw_model
-      (.workspace.current_dir // .workspace.project_dir // .cwd // "") # 23 - dir
+      (.workspace.current_dir // .workspace.project_dir // .cwd // ""), # 23 - dir
+      # Rate limit values (indexes 24-27)
+      (.rate_limits.five_hour.used_percentage // ""),               # 24
+      (.rate_limits.seven_day.used_percentage // ""),               # 25
+      (.rate_limits.five_hour.resets_at // ""),                     # 26
+      (.rate_limits.seven_day.resets_at // "")                      # 27
     ] | .[]
   ')"
 
   # Parse jq output into an array (one element per line)
   # Initialize with defaults to handle partial/failed jq output
-  values=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "")
+  values=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "")
 
   # Only parse if jq produced output
   if [ -n "$jq_output" ]; then
@@ -200,6 +205,10 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
   export CLAUDE_OUTPUT_TOKENS="${values[19]:-}"
   export CLAUDE_CACHE_CREATION="${values[20]:-}"
   export CLAUDE_CACHE_READ="${values[21]:-}"
+  export CLAUDE_RATE_5H_RAW="${values[24]:-}"
+  export CLAUDE_RATE_7D_RAW="${values[25]:-}"
+  export CLAUDE_RATE_5H_RESETS="${values[26]:-}"
+  export CLAUDE_RATE_7D_RESETS="${values[27]:-}"
 
   raw_model="${values[22]:-}"
   dir="${values[23]:-}"
@@ -279,6 +288,55 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
     fi
   else
     export CLAUDE_CONTEXT="~~%"
+  fi
+
+  #
+  # Rate limit usage (5-hour session and 7-day week)
+  # Format: "X% (2h 47m)" or "X% (5d 13h)"
+  #
+  rate_5h_raw="${values[24]:-}"
+  rate_7d_raw="${values[25]:-}"
+  rate_5h_resets="${values[26]:-}"
+  rate_7d_resets="${values[27]:-}"
+
+  # Helper: format seconds remaining as "Xd Yh" or "Xh Ym"
+  _fmt_remaining() {
+    local resets_at="$1"
+    [ -z "$resets_at" ] || [ "$resets_at" = "null" ] && return
+    local now remaining days hours minutes
+    now=$(date +%s)
+    remaining=$(( resets_at - now ))
+    [ "$remaining" -le 0 ] && return
+    days=$(( remaining / 86400 ))
+    hours=$(( (remaining % 86400) / 3600 ))
+    minutes=$(( (remaining % 3600) / 60 ))
+    if [ "$days" -gt 0 ]; then
+      printf '%dd %dh' "$days" "$hours"
+    else
+      printf '%dh %dm' "$hours" "$minutes"
+    fi
+  }
+
+  if [ -n "$rate_5h_raw" ] && [ "$rate_5h_raw" != "null" ]; then
+    _remaining=$(_fmt_remaining "$rate_5h_resets")
+    if [ -n "$_remaining" ]; then
+      export CLAUDE_RATE_5H="${rate_5h_raw%.*}% ($_remaining)"
+    else
+      export CLAUDE_RATE_5H="${rate_5h_raw%.*}%"
+    fi
+  else
+    export CLAUDE_RATE_5H=""
+  fi
+
+  if [ -n "$rate_7d_raw" ] && [ "$rate_7d_raw" != "null" ]; then
+    _remaining=$(_fmt_remaining "$rate_7d_resets")
+    if [ -n "$_remaining" ]; then
+      export CLAUDE_RATE_7D="${rate_7d_raw%.*}% ($_remaining)"
+    else
+      export CLAUDE_RATE_7D="${rate_7d_raw%.*}%"
+    fi
+  else
+    export CLAUDE_RATE_7D=""
   fi
 fi
 
