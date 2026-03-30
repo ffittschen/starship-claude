@@ -81,6 +81,14 @@ printf "CLAUDE_OUTPUT_TOKENS=%s\n" "${CLAUDE_OUTPUT_TOKENS:-}"
 printf "CLAUDE_CACHE_CREATION=%s\n" "${CLAUDE_CACHE_CREATION:-}"
 printf "CLAUDE_CACHE_READ=%s\n" "${CLAUDE_CACHE_READ:-}"
 
+# Rate limit values
+printf "CLAUDE_RATE_5H_RAW=%s\n" "${CLAUDE_RATE_5H_RAW:-}"
+printf "CLAUDE_RATE_7D_RAW=%s\n" "${CLAUDE_RATE_7D_RAW:-}"
+printf "CLAUDE_RATE_5H_RESETS=%s\n" "${CLAUDE_RATE_5H_RESETS:-}"
+printf "CLAUDE_RATE_7D_RESETS=%s\n" "${CLAUDE_RATE_7D_RESETS:-}"
+printf "CLAUDE_RATE_5H=%s\n" "${CLAUDE_RATE_5H:-}"
+printf "CLAUDE_RATE_7D=%s\n" "${CLAUDE_RATE_7D:-}"
+
 # Starship config
 printf "STARSHIP_CONFIG=%s\n" "${STARSHIP_CONFIG:-}"
 printf "STARSHIP_SHELL=%s\n" "${STARSHIP_SHELL:-}"
