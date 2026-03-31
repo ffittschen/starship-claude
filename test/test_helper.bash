@@ -89,6 +89,23 @@ printf "CLAUDE_RATE_7D_RESETS=%s\n" "${CLAUDE_RATE_7D_RESETS:-}"
 printf "CLAUDE_RATE_5H=%s\n" "${CLAUDE_RATE_5H:-}"
 printf "CLAUDE_RATE_7D=%s\n" "${CLAUDE_RATE_7D:-}"
 
+# Budget intelligence values
+printf "CLAUDE_BUDGET_5H_OK=%s\n" "${CLAUDE_BUDGET_5H_OK:-}"
+printf "CLAUDE_BUDGET_5H_WARN=%s\n" "${CLAUDE_BUDGET_5H_WARN:-}"
+printf "CLAUDE_BUDGET_5H_CRIT=%s\n" "${CLAUDE_BUDGET_5H_CRIT:-}"
+printf "CLAUDE_PACE_OK=%s\n" "${CLAUDE_PACE_OK:-}"
+printf "CLAUDE_PACE_WARN=%s\n" "${CLAUDE_PACE_WARN:-}"
+printf "CLAUDE_PACE_CRIT=%s\n" "${CLAUDE_PACE_CRIT:-}"
+printf "CLAUDE_BUDGET_RESET=%s\n" "${CLAUDE_BUDGET_RESET:-}"
+printf "CLAUDE_BUDGET_7D_OK=%s\n" "${CLAUDE_BUDGET_7D_OK:-}"
+printf "CLAUDE_BUDGET_7D_WARN=%s\n" "${CLAUDE_BUDGET_7D_WARN:-}"
+printf "CLAUDE_BUDGET_7D_CRIT=%s\n" "${CLAUDE_BUDGET_7D_CRIT:-}"
+printf "CLAUDE_PEAK_ON=%s\n" "${CLAUDE_PEAK_ON:-}"
+printf "CLAUDE_PEAK_OFF=%s\n" "${CLAUDE_PEAK_OFF:-}"
+printf "CLAUDE_IS_PEAK=%s\n" "${CLAUDE_IS_PEAK:-}"
+printf "CLAUDE_PACE_TARGET_5H=%s\n" "${CLAUDE_PACE_TARGET_5H:-}"
+printf "CLAUDE_PACE_DELTA_5H=%s\n" "${CLAUDE_PACE_DELTA_5H:-}"
+
 # Starship config
 printf "STARSHIP_CONFIG=%s\n" "${STARSHIP_CONFIG:-}"
 printf "STARSHIP_SHELL=%s\n" "${STARSHIP_SHELL:-}"

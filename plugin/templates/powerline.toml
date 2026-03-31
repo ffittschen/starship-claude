@@ -19,6 +19,18 @@ ${env_var.CLAUDE_CONTEXT}\
 [](fg:context_bg bg:cost_bg)\
 ${env_var.CLAUDE_COST}\
 [ ](fg:cost_bg)\
+${env_var.CLAUDE_BUDGET_5H_OK}\
+${env_var.CLAUDE_BUDGET_5H_WARN}\
+${env_var.CLAUDE_BUDGET_5H_CRIT}\
+${env_var.CLAUDE_PACE_OK}\
+${env_var.CLAUDE_PACE_WARN}\
+${env_var.CLAUDE_PACE_CRIT}\
+${env_var.CLAUDE_BUDGET_RESET}\
+${env_var.CLAUDE_BUDGET_7D_OK}\
+${env_var.CLAUDE_BUDGET_7D_WARN}\
+${env_var.CLAUDE_BUDGET_7D_CRIT}\
+${env_var.CLAUDE_PEAK_ON}\
+${env_var.CLAUDE_PEAK_OFF}\
 """
 
 [directory]
@@ -50,6 +62,71 @@ style = "bg:context_bg fg:context"
 variable = "CLAUDE_COST"
 format = "[$env_value]($style)"
 style = "bg:cost_bg fg:cost"
+
+# Budget 5h (3-var pattern: only one is populated at a time)
+[env_var.CLAUDE_BUDGET_5H_OK]
+variable = "CLAUDE_BUDGET_5H_OK"
+format = "[ $env_value]($style)"
+style = "fg:budget_ok"
+
+[env_var.CLAUDE_BUDGET_5H_WARN]
+variable = "CLAUDE_BUDGET_5H_WARN"
+format = "[ $env_value]($style)"
+style = "fg:budget_warn"
+
+[env_var.CLAUDE_BUDGET_5H_CRIT]
+variable = "CLAUDE_BUDGET_5H_CRIT"
+format = "[ $env_value]($style)"
+style = "fg:budget_crit"
+
+# Pace indicator (3-var pattern)
+[env_var.CLAUDE_PACE_OK]
+variable = "CLAUDE_PACE_OK"
+format = "[ $env_value]($style)"
+style = "fg:budget_ok"
+
+[env_var.CLAUDE_PACE_WARN]
+variable = "CLAUDE_PACE_WARN"
+format = "[ $env_value]($style)"
+style = "fg:budget_warn"
+
+[env_var.CLAUDE_PACE_CRIT]
+variable = "CLAUDE_PACE_CRIT"
+format = "[ $env_value]($style)"
+style = "fg:budget_crit"
+
+# Reset countdown
+[env_var.CLAUDE_BUDGET_RESET]
+variable = "CLAUDE_BUDGET_RESET"
+format = "[ $env_value]($style)"
+style = "fg:budget_dim"
+
+# Budget 7d (3-var pattern, auto-shown when relevant)
+[env_var.CLAUDE_BUDGET_7D_OK]
+variable = "CLAUDE_BUDGET_7D_OK"
+format = "[ $env_value]($style)"
+style = "fg:budget_ok"
+
+[env_var.CLAUDE_BUDGET_7D_WARN]
+variable = "CLAUDE_BUDGET_7D_WARN"
+format = "[ $env_value]($style)"
+style = "fg:budget_warn"
+
+[env_var.CLAUDE_BUDGET_7D_CRIT]
+variable = "CLAUDE_BUDGET_7D_CRIT"
+format = "[ $env_value]($style)"
+style = "fg:budget_crit"
+
+# Peak/off-peak indicator
+[env_var.CLAUDE_PEAK_ON]
+variable = "CLAUDE_PEAK_ON"
+format = "[ $env_value]($style)"
+style = "fg:budget_crit bold"
+
+[env_var.CLAUDE_PEAK_OFF]
+variable = "CLAUDE_PEAK_OFF"
+format = "[ $env_value]($style)"
+style = "fg:budget_dim"
 
 ## Custom palette
 #

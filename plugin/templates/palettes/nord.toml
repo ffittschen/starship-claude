@@ -18,3 +18,9 @@ context_bg = "#3b4252"
 
 cost = "#a3be8c"
 cost_bg = "#434c5e"
+
+# Budget intelligence colors
+budget_ok = "#a3be8c"
+budget_warn = "#ebcb8b"
+budget_crit = "#bf616a"
+budget_dim = "#4c566a"

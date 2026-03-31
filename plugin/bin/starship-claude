@@ -338,6 +338,214 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
   else
     export CLAUDE_RATE_7D=""
   fi
+
+  #
+  # Budget intelligence: progress bar, pacing, peak/off-peak
+  #
+
+  # Build a Unicode progress bar: ▓▓▓│░░░░ (filled, pace marker, empty)
+  # Args: pct width [pace_pct]
+  _budget_bar() {
+    local pct="${1:-0}" width="$2" pace_pct="${3:-}"
+    # Clamp percentage
+    [ "$pct" -gt 100 ] 2>/dev/null && pct=100
+    [ "$pct" -lt 0 ] 2>/dev/null && pct=0
+    local filled=$(( pct * width / 100 ))
+    [ "$filled" -gt "$width" ] && filled=$width
+
+    # Build filled and empty strings
+    local bar_full="" bar_empty=""
+    local i
+    for (( i=0; i<filled; i++ )); do bar_full+=$'\u2593'; done
+    for (( i=filled; i<width; i++ )); do bar_empty+=$'\u2591'; done
+    local bar="${bar_full}${bar_empty}"
+
+    # Insert pace marker (│) if applicable
+    if [ -n "$pace_pct" ] && [ "$pace_pct" -ge 0 ] 2>/dev/null && [ "$pace_pct" -le 100 ] 2>/dev/null; then
+      local pace_pos=$(( pace_pct * width / 100 ))
+      [ "$pace_pos" -ge "$width" ] && pace_pos=$(( width - 1 ))
+      [ "$pace_pos" -lt 0 ] && pace_pos=0
+      # Replace character at pace_pos with │
+      local before="${bar:0:$pace_pos}"
+      local after="${bar:$((pace_pos+1))}"
+      bar="${before}"$'\u2502'"${after}"
+    fi
+    printf '%s' "$bar"
+  }
+
+  # Compute pace target: what % of budget "should" be used by now
+  # Args: resets_at_epoch window_hours
+  _pace_target() {
+    local resets_at="$1" window_hours="$2"
+    [ -z "$resets_at" ] || [ "$resets_at" = "null" ] && return
+    local now window_sec start_sec elapsed
+    now=$(date +%s)
+    window_sec=$(( window_hours * 3600 ))
+    start_sec=$(( resets_at - window_sec ))
+    elapsed=$(( now - start_sec ))
+    [ "$elapsed" -le 0 ] || [ "$elapsed" -ge "$window_sec" ] && return
+    printf '%d' $(( elapsed * 100 / window_sec ))
+  }
+
+  # Classify usage percentage into ok/warn/crit
+  _classify() {
+    local pct="${1:-0}"
+    if [ "$pct" -ge 90 ] 2>/dev/null; then
+      printf 'crit'
+    elif [ "$pct" -ge 70 ] 2>/dev/null; then
+      printf 'warn'
+    else
+      printf 'ok'
+    fi
+  }
+
+  # Check if current time is peak hours (default: 5-11 AM PT, weekdays)
+  _is_peak() {
+    local tz="${CLAUDE_BUDGET_PEAK_TZ:-America/Los_Angeles}"
+    local dow hour
+    dow=$(TZ="$tz" date +%u 2>/dev/null) || return 1  # 1=Mon, 7=Sun
+    hour=$(TZ="$tz" date +%-H 2>/dev/null) || return 1  # no leading zero
+    # Weekends are off-peak
+    [ "$dow" -ge 6 ] && { printf 'false'; return; }
+    # Peak: 5-11 AM
+    if [ "$hour" -ge 5 ] && [ "$hour" -lt 11 ]; then
+      printf 'true'
+    else
+      printf 'false'
+    fi
+  }
+
+  # Compute time remaining until peak ends (if peak) or starts (if off-peak)
+  _peak_countdown() {
+    local is_peak="$1"
+    local tz="${CLAUDE_BUDGET_PEAK_TZ:-America/Los_Angeles}"
+    local now_h now_m now_min target_min remaining h m
+    now_h=$(TZ="$tz" date +%-H 2>/dev/null) || return
+    now_m=$(TZ="$tz" date +%-M 2>/dev/null) || return
+    now_min=$(( now_h * 60 + now_m ))
+
+    if [ "$is_peak" = "true" ]; then
+      target_min=$(( 11 * 60 ))  # peak ends at 11:00
+      remaining=$(( target_min - now_min ))
+      [ "$remaining" -le 0 ] && { printf 'ending'; return; }
+    else
+      target_min=$(( 5 * 60 ))  # peak starts at 5:00
+      if [ "$now_min" -lt "$target_min" ]; then
+        remaining=$(( target_min - now_min ))
+      else
+        remaining=$(( 1440 - now_min + target_min ))
+      fi
+    fi
+
+    h=$(( remaining / 60 ))
+    m=$(( remaining % 60 ))
+    if [ "$h" -gt 0 ]; then
+      printf '%dh%02dm' "$h" "$m"
+    else
+      printf '%dm' "$m"
+    fi
+  }
+
+  # Export budget env vars when rate limit data is available
+  if [ -n "$rate_5h_raw" ] && [ "$rate_5h_raw" != "null" ]; then
+    pct_5h="${rate_5h_raw%.*}"
+
+    # Pace target for 5h window
+    pace_5h=""
+    if [ -n "$rate_5h_resets" ] && [ "$rate_5h_resets" != "null" ]; then
+      pace_5h=$(_pace_target "$rate_5h_resets" 5)
+    fi
+
+    # Build progress bar
+    bar_5h=$(_budget_bar "$pct_5h" 8 "$pace_5h")
+    budget_text_5h="5h ${bar_5h} ${pct_5h}%"
+
+    # 3-var routing for 5h budget (only export the one matching threshold)
+    unset CLAUDE_BUDGET_5H_OK CLAUDE_BUDGET_5H_WARN CLAUDE_BUDGET_5H_CRIT
+    level_5h=$(_classify "$pct_5h")
+    case "$level_5h" in
+      ok)   export CLAUDE_BUDGET_5H_OK="$budget_text_5h" ;;
+      warn) export CLAUDE_BUDGET_5H_WARN="$budget_text_5h" ;;
+      crit) export CLAUDE_BUDGET_5H_CRIT="$budget_text_5h" ;;
+    esac
+
+    # Pace indicator (3-var routing, only export the one matching)
+    unset CLAUDE_PACE_OK CLAUDE_PACE_WARN CLAUDE_PACE_CRIT
+    if [ -n "$pace_5h" ]; then
+      pace_delta=$(( pct_5h - pace_5h ))
+      export CLAUDE_PACE_TARGET_5H="$pace_5h"
+      export CLAUDE_PACE_DELTA_5H="$pace_delta"
+      if [ "$pace_delta" -gt 2 ]; then
+        pace_text=$(printf '\u21E1%d%%' "$pace_delta")
+        if [ "$pace_delta" -gt 15 ]; then
+          export CLAUDE_PACE_CRIT="$pace_text"
+        else
+          export CLAUDE_PACE_WARN="$pace_text"
+        fi
+      elif [ "$pace_delta" -lt -2 ]; then
+        export CLAUDE_PACE_OK=$(printf '\u21E3%d%%' "$(( -pace_delta ))")
+      else
+        export CLAUDE_PACE_OK="on pace"
+      fi
+    fi
+
+    # Reset countdown
+    unset CLAUDE_BUDGET_RESET
+    if [ -n "$rate_5h_resets" ] && [ "$rate_5h_resets" != "null" ]; then
+      _reset_remaining=$(_fmt_remaining "$rate_5h_resets")
+      if [ -n "$_reset_remaining" ]; then
+        export CLAUDE_BUDGET_RESET=$(printf '\u279E%s' "$_reset_remaining")
+      fi
+    fi
+
+    # 7d budget (auto-show when 7d > 50% or 5h >= 90%)
+    unset CLAUDE_BUDGET_7D_OK CLAUDE_BUDGET_7D_WARN CLAUDE_BUDGET_7D_CRIT
+    if [ -n "$rate_7d_raw" ] && [ "$rate_7d_raw" != "null" ]; then
+      pct_7d="${rate_7d_raw%.*}"
+      if [ "$pct_7d" -gt 50 ] || [ "$pct_5h" -ge 90 ]; then
+        pace_7d=""
+        if [ -n "$rate_7d_resets" ] && [ "$rate_7d_resets" != "null" ]; then
+          pace_7d=$(_pace_target "$rate_7d_resets" 168)
+        fi
+        bar_7d=$(_budget_bar "$pct_7d" 5 "$pace_7d")
+        budget_text_7d="7d ${bar_7d} ${pct_7d}%"
+        level_7d=$(_classify "$pct_7d")
+        case "$level_7d" in
+          ok)   export CLAUDE_BUDGET_7D_OK="$budget_text_7d" ;;
+          warn) export CLAUDE_BUDGET_7D_WARN="$budget_text_7d" ;;
+          crit) export CLAUDE_BUDGET_7D_CRIT="$budget_text_7d" ;;
+        esac
+      fi
+    fi
+
+    # Peak/off-peak detection (only shown with rate-limited plans)
+    unset CLAUDE_PEAK_ON CLAUDE_PEAK_OFF CLAUDE_IS_PEAK
+    peak_status=$(_is_peak 2>/dev/null) || peak_status=""
+    if [ -n "$peak_status" ]; then
+      export CLAUDE_IS_PEAK="$peak_status"
+      countdown=$(_peak_countdown "$peak_status" 2>/dev/null) || countdown=""
+      if [ "$peak_status" = "true" ]; then
+        if [ -n "$countdown" ]; then
+          export CLAUDE_PEAK_ON=$(printf '\u25B2 peak %s' "$countdown")
+        else
+          export CLAUDE_PEAK_ON=$(printf '\u25B2 peak')
+        fi
+      else
+        if [ -n "$countdown" ]; then
+          export CLAUDE_PEAK_OFF=$(printf '\u25BD off-peak %s' "$countdown")
+        else
+          export CLAUDE_PEAK_OFF=$(printf '\u25BD off-peak')
+        fi
+      fi
+    fi
+  else
+    # No rate data — ensure all budget vars are unset
+    unset CLAUDE_BUDGET_5H_OK CLAUDE_BUDGET_5H_WARN CLAUDE_BUDGET_5H_CRIT
+    unset CLAUDE_PACE_OK CLAUDE_PACE_WARN CLAUDE_PACE_CRIT
+    unset CLAUDE_BUDGET_RESET
+    unset CLAUDE_BUDGET_7D_OK CLAUDE_BUDGET_7D_WARN CLAUDE_BUDGET_7D_CRIT
+    unset CLAUDE_PEAK_ON CLAUDE_PEAK_OFF CLAUDE_IS_PEAK
+  fi
 fi
 
 # Allow overriding starship command for testing
