@@ -101,6 +101,74 @@ Warning does not mean stop, but be aware of your context usage.
 
 [dumb-zone]: https://www.youtube.com/watch?v=rmvDxxNubIg 'YouTube: No Vibes Allowed: Solving Hard Problems in Complex Codebases – Dex Horthy, HumanLayer'
 
+## Budget Intelligence
+
+### Rate-Limited Plans (Claude Max/Pro)
+
+When rate limit data is available, the statusline shows a progress bar with pacing awareness:
+
+```
+5h ▓▓▓│░░░░ 38% ⇣12% ➞2h30m  ▽ off-peak 18h12m
+```
+
+- **Progress bar** with pace marker (`│`) showing where usage *should* be
+- **Pace indicator**: `⇣12%` (under pace, headroom) / `⇡8%` (over pace) / `on pace`
+- **Reset countdown**: time until the 5-hour window resets
+- **7-day window**: auto-shown when 5h usage ≥ 90% or 7d usage > 50%
+- **Peak/off-peak**: detects Anthropic's peak hours (5–11 AM PT, weekdays)
+
+### Enterprise/API Plans
+
+For plans without rate limits, the statusline shows cost tracking:
+
+```
+$14.50 (+$2.15) │ $22.80 today │ $34.90 Mar
+```
+
+- **Session cost** colored by threshold: green (< $5), yellow ($5–$20), red (≥ $20)
+- **Per-prompt delta** (`+$2.15`): cost of the last prompt (requires the budget hook)
+- **Daily total** with yesterday fallback
+- **Monthly total**
+
+Thresholds and enterprise discount are configurable via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_COST_WARN_USD` | `5` | Yellow threshold |
+| `CLAUDE_COST_CRIT_USD` | `20` | Red threshold |
+| `CLAUDE_ENTERPRISE_DISCOUNT` | `0` | Discount percentage (0–100) |
+
+### Budget Hook (optional)
+
+The per-prompt cost delta requires a hook that snapshots the session cost before each prompt. Add to `~/.claude/settings.json`:
+
+```jsonc
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      // ... your existing hooks ...
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/budget-hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+If you installed via the plugin, the hook is at `plugin/bin/budget-hook`. For manual installs, copy it alongside `starship-claude`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/martinemde/starship-claude/main/plugin/bin/budget-hook \
+  -o ~/.local/bin/budget-hook && chmod +x ~/.local/bin/budget-hook
+```
+
 ### Customize
 
 Add these options to the `~/.claude/settings.json` if you want do things differently.
