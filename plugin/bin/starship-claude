@@ -410,8 +410,8 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
     # Build filled and empty strings
     local bar_full="" bar_empty=""
     local i
-    for (( i=0; i<filled; i++ )); do bar_full+=$'\u2593'; done
-    for (( i=filled; i<width; i++ )); do bar_empty+=$'\u2591'; done
+    for (( i=0; i<filled; i++ )); do bar_full+='▓'; done
+    for (( i=filled; i<width; i++ )); do bar_empty+='░'; done
     local bar="${bar_full}${bar_empty}"
 
     # Insert pace marker (│) if applicable
@@ -422,7 +422,7 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
       # Replace character at pace_pos with │
       local before="${bar:0:$pace_pos}"
       local after="${bar:$((pace_pos+1))}"
-      bar="${before}"$'\u2502'"${after}"
+      bar="${before}│${after}"
     fi
     printf '%s' "$bar"
   }
@@ -530,14 +530,14 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
       export CLAUDE_PACE_TARGET_5H="$pace_5h"
       export CLAUDE_PACE_DELTA_5H="$pace_delta"
       if [ "$pace_delta" -gt 2 ]; then
-        pace_text=$(printf '\u21E1%d%%' "$pace_delta")
+        pace_text=$(printf '⇡%d%%' "$pace_delta")
         if [ "$pace_delta" -gt 15 ]; then
           export CLAUDE_PACE_CRIT="$pace_text"
         else
           export CLAUDE_PACE_WARN="$pace_text"
         fi
       elif [ "$pace_delta" -lt -2 ]; then
-        export CLAUDE_PACE_OK=$(printf '\u21E3%d%%' "$(( -pace_delta ))")
+        export CLAUDE_PACE_OK=$(printf '⇣%d%%' "$(( -pace_delta ))")
       else
         export CLAUDE_PACE_OK="on pace"
       fi
@@ -548,7 +548,7 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
     if [ -n "$rate_5h_resets" ] && [ "$rate_5h_resets" != "null" ]; then
       _reset_remaining=$(_fmt_remaining "$rate_5h_resets")
       if [ -n "$_reset_remaining" ]; then
-        export CLAUDE_BUDGET_RESET=$(printf '\u279E%s' "$_reset_remaining")
+        export CLAUDE_BUDGET_RESET=$(printf '➞%s' "$_reset_remaining")
       fi
     fi
 
@@ -580,15 +580,15 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
       countdown=$(_peak_countdown "$peak_status" 2>/dev/null) || countdown=""
       if [ "$peak_status" = "true" ]; then
         if [ -n "$countdown" ]; then
-          export CLAUDE_PEAK_ON=$(printf '\u25B2 peak %s' "$countdown")
+          export CLAUDE_PEAK_ON=$(printf '▲ peak %s' "$countdown")
         else
-          export CLAUDE_PEAK_ON=$(printf '\u25B2 peak')
+          export CLAUDE_PEAK_ON=$(printf '▲ peak')
         fi
       else
         if [ -n "$countdown" ]; then
-          export CLAUDE_PEAK_OFF=$(printf '\u25BD off-peak %s' "$countdown")
+          export CLAUDE_PEAK_OFF=$(printf '▽ off-peak %s' "$countdown")
         else
-          export CLAUDE_PEAK_OFF=$(printf '\u25BD off-peak')
+          export CLAUDE_PEAK_OFF=$(printf '▽ off-peak')
         fi
       fi
     fi
