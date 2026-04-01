@@ -96,6 +96,60 @@ HAIKU_NERD=" "
 SONNET_NERD="󰚩 "
 OPUS_NERD="󱚦 "
 
+# Configuration: enterprise cost thresholds (overridable via env vars)
+COST_WARN_USD="${CLAUDE_COST_WARN_USD:-5}"
+COST_CRIT_USD="${CLAUDE_COST_CRIT_USD:-20}"
+
+# State file for ledger and snapshots
+STATE_DIR="${CLAUDE_BUDGET_STATE_DIR:-$HOME/.claude/starship-claude}"
+STATE_FILE="${STATE_DIR}/budget-state.json"
+
+# Read state file, returns {} if missing or corrupt
+_state_read() {
+  if [ -f "$STATE_FILE" ]; then
+    cat "$STATE_FILE" 2>/dev/null || echo '{}'
+  else
+    echo '{}'
+  fi
+}
+
+# Atomic write state file via tmp + mv
+_state_write() {
+  mkdir -p "$STATE_DIR"
+  local tmp="${STATE_FILE}.tmp.$$"
+  printf '%s' "$1" > "$tmp"
+  mv "$tmp" "$STATE_FILE"
+}
+
+# Classify cost into ok/warn/crit using awk for float comparison
+_classify_cost() {
+  local cost="$1"
+  if awk "BEGIN{exit !($cost >= $COST_CRIT_USD)}" 2>/dev/null; then
+    printf 'crit'
+  elif awk "BEGIN{exit !($cost >= $COST_WARN_USD)}" 2>/dev/null; then
+    printf 'warn'
+  else
+    printf 'ok'
+  fi
+}
+
+# Apply enterprise discount (0-100%) to a cost value
+_apply_discount() {
+  local cost="$1"
+  local discount="${CLAUDE_ENTERPRISE_DISCOUNT:-0}"
+  if [ "$discount" -eq 0 ] 2>/dev/null; then
+    printf '%s' "$cost"
+  else
+    awk "BEGIN{printf \"%.10f\", $cost * (1 - $discount/100)}"
+  fi
+}
+
+# Portable date: get YYYY-MM-DD for N days ago (macOS + Linux)
+_date_days_ago() {
+  local days="$1"
+  date -v-"${days}d" +%Y-%m-%d 2>/dev/null || date -d "$days days ago" +%Y-%m-%d 2>/dev/null || echo ""
+}
+
 # Parse command line options
 show_progress=1
 starship_config=""
@@ -539,12 +593,105 @@ if command -v jq >/dev/null 2>&1 && [ -n "$payload" ]; then
       fi
     fi
   else
-    # No rate data — ensure all budget vars are unset
+    # No rate data — enterprise/API user path
     unset CLAUDE_BUDGET_5H_OK CLAUDE_BUDGET_5H_WARN CLAUDE_BUDGET_5H_CRIT
     unset CLAUDE_PACE_OK CLAUDE_PACE_WARN CLAUDE_PACE_CRIT
     unset CLAUDE_BUDGET_RESET
     unset CLAUDE_BUDGET_7D_OK CLAUDE_BUDGET_7D_WARN CLAUDE_BUDGET_7D_CRIT
     unset CLAUDE_PEAK_ON CLAUDE_PEAK_OFF CLAUDE_IS_PEAK
+
+    #
+    # Enterprise cost tracking: threshold coloring, ledger, delta
+    #
+    unset CLAUDE_COST_OK CLAUDE_COST_WARN CLAUDE_COST_CRIT
+    unset CLAUDE_COST_DELTA CLAUDE_COST_TODAY CLAUDE_COST_MONTH
+
+    raw_cost="${values[8]:-}"
+    if [ -n "$raw_cost" ]; then
+      # Apply enterprise discount
+      display_cost="$(_apply_discount "$raw_cost")"
+      formatted_cost="$(printf '$%.2f' "$display_cost")"
+
+      # Cost threshold coloring (3-var pattern)
+      cost_level=$(_classify_cost "$display_cost")
+      case "$cost_level" in
+        ok)   export CLAUDE_COST_OK="$formatted_cost" ;;
+        warn) export CLAUDE_COST_WARN="$formatted_cost" ;;
+        crit) export CLAUDE_COST_CRIT="$formatted_cost" ;;
+      esac
+
+      # Unset CLAUDE_COST so templates don't render it alongside the 3-var pattern
+      unset CLAUDE_COST
+
+      # State file: ledger + delta
+      if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
+        state=$(_state_read)
+        today="$(date +%Y-%m-%d)"
+        month="$(date +%Y-%m)"
+        month_short="$(date +%b)"
+
+        # Per-prompt cost delta from snapshot
+        snap_cost="$(printf '%s' "$state" | jq -r --arg sid "$CLAUDE_SESSION_ID" \
+          '.snapshots[$sid].cost_usd // empty' 2>/dev/null)" || snap_cost=""
+        if [ -n "$snap_cost" ]; then
+          delta="$(awk "BEGIN{d=$raw_cost-$snap_cost; if(d>0.004) printf \"\$%.2f\", d; else print \"\"}")"
+          if [ -n "$delta" ]; then
+            delta_display="$delta"
+            if [ "${CLAUDE_ENTERPRISE_DISCOUNT:-0}" -ne 0 ] 2>/dev/null; then
+              delta_display="$(printf '$%.2f' "$(_apply_discount "$(awk "BEGIN{printf \"%.10f\", $raw_cost-$snap_cost}")")")"
+            fi
+            export CLAUDE_COST_DELTA="(+${delta_display})"
+          fi
+        fi
+
+        # Update ledger entry for this session
+        state="$(printf '%s' "$state" | jq \
+          --arg sid "$CLAUDE_SESSION_ID" \
+          --argjson cost "${raw_cost}" \
+          --arg day "$today" \
+          --arg month "$month" \
+          'if .ledger == null then .ledger = {} else . end |
+           if .ledger[$sid] == null or $cost > .ledger[$sid].cost
+           then .ledger[$sid] = {cost: $cost, day: $day, month: $month}
+           else . end' 2>/dev/null)" || true
+
+        # Prune ledger entries older than 31 days
+        cutoff="$(_date_days_ago 31)"
+        if [ -n "$cutoff" ]; then
+          state="$(printf '%s' "$state" | jq --arg cutoff "$cutoff" \
+            '.ledger |= (if . == null then {} else with_entries(select(.value.day >= $cutoff)) end)' 2>/dev/null)" || true
+        fi
+
+        # Daily total (with yesterday fallback)
+        today_total="$(printf '%s' "$state" | jq -r --arg day "$today" \
+          '[.ledger // {} | to_entries[] | select(.value.day == $day) | .value.cost] | add // 0' 2>/dev/null)" || today_total="0"
+        if awk "BEGIN{exit !($today_total > 0.004)}" 2>/dev/null; then
+          today_display="$(_apply_discount "$today_total")"
+          export CLAUDE_COST_TODAY="$(printf '$%.2f today' "$today_display")"
+        else
+          yesterday="$(_date_days_ago 1)"
+          if [ -n "$yesterday" ]; then
+            yday_total="$(printf '%s' "$state" | jq -r --arg day "$yesterday" \
+              '[.ledger // {} | to_entries[] | select(.value.day == $day) | .value.cost] | add // 0' 2>/dev/null)" || yday_total="0"
+            if awk "BEGIN{exit !($yday_total > 0.004)}" 2>/dev/null; then
+              yday_display="$(_apply_discount "$yday_total")"
+              export CLAUDE_COST_TODAY="$(printf '$%.2f yesterday' "$yday_display")"
+            fi
+          fi
+        fi
+
+        # Monthly total
+        month_total="$(printf '%s' "$state" | jq -r --arg month "$month" \
+          '[.ledger // {} | to_entries[] | select(.value.month == $month) | .value.cost] | add // 0' 2>/dev/null)" || month_total="0"
+        if awk "BEGIN{exit !($month_total > 0.004)}" 2>/dev/null; then
+          month_display="$(_apply_discount "$month_total")"
+          export CLAUDE_COST_MONTH="$(printf '$%.2f %s' "$month_display" "$month_short")"
+        fi
+
+        # Write state
+        _state_write "$state" 2>/dev/null || true
+      fi
+    fi
   fi
 fi
 

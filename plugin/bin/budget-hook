@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# budget-hook - Claude Code UserPromptSubmit hook for cost/rate snapshots
+#
+# Snapshots the current session cost (and rate limit percentages) before
+# each prompt so the statusline can compute per-prompt deltas.
+#
+# Install in ~/.claude/settings.json:
+#   {
+#     "hooks": {
+#       "UserPromptSubmit": [{
+#         "type": "command",
+#         "command": "~/.local/bin/budget-hook"
+#       }]
+#     }
+#   }
+#
+set -o errexit -o nounset -o pipefail
+
+STATE_DIR="${CLAUDE_BUDGET_STATE_DIR:-$HOME/.claude/starship-claude}"
+STATE_FILE="${STATE_DIR}/budget-state.json"
+
+payload="$(cat || true)"
+[ -z "$payload" ] && exit 0
+
+# Extract session_id from hook payload
+session_id="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)" || session_id=""
+[ -z "$session_id" ] && exit 0
+
+# Read existing state
+state="{}"
+[ -f "$STATE_FILE" ] && state="$(cat "$STATE_FILE" 2>/dev/null || echo '{}')"
+
+# Read current cost from state ledger (written by statusline on last invocation)
+current_cost="$(printf '%s' "$state" | jq -r --arg sid "$session_id" \
+  '.ledger[$sid].cost // empty' 2>/dev/null)" || current_cost=""
+
+# Also read rate limit data from hook payload (if available)
+five_hour_pct="$(printf '%s' "$payload" | jq -r '.rate_limits.five_hour.used_percentage // empty' 2>/dev/null)" || five_hour_pct=""
+
+# Snapshot for delta computation
+now="$(date +%s)"
+state="$(printf '%s' "$state" | jq \
+  --arg sid "$session_id" \
+  --argjson cost "${current_cost:-null}" \
+  --argjson pct5h "${five_hour_pct:-null}" \
+  --argjson ts "$now" \
+  'if .snapshots == null then .snapshots = {} else . end |
+   .snapshots[$sid] = {cost_usd: $cost, five_hour_pct: $pct5h, ts: $ts}' 2>/dev/null)" || exit 0
+
+# Prune old snapshots (> 48h)
+cutoff=$(( now - 48 * 3600 ))
+state="$(printf '%s' "$state" | jq --argjson cutoff "$cutoff" \
+  '.snapshots |= (if . == null then {} else with_entries(select(.value.ts >= $cutoff)) end)' 2>/dev/null)" || true
+
+# Atomic write
+mkdir -p "$STATE_DIR"
+tmp="${STATE_FILE}.tmp.$$"
+printf '%s' "$state" > "$tmp"
+mv "$tmp" "$STATE_FILE"

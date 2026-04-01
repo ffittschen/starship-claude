@@ -20,6 +20,9 @@ setup() {
   # Create temp directory for test output
   export TEST_TEMP_DIR="$(mktemp -d)"
 
+  # Isolate budget state to temp dir so tests don't accumulate real state
+  export CLAUDE_BUDGET_STATE_DIR="${TEST_TEMP_DIR}/budget-state"
+
   # Create isolated git repo with deterministic state so Starship's
   # git_branch and git_status modules produce consistent output regardless
   # of the real repository's current state.
@@ -105,6 +108,14 @@ printf "CLAUDE_PEAK_OFF=%s\n" "${CLAUDE_PEAK_OFF:-}"
 printf "CLAUDE_IS_PEAK=%s\n" "${CLAUDE_IS_PEAK:-}"
 printf "CLAUDE_PACE_TARGET_5H=%s\n" "${CLAUDE_PACE_TARGET_5H:-}"
 printf "CLAUDE_PACE_DELTA_5H=%s\n" "${CLAUDE_PACE_DELTA_5H:-}"
+
+# Enterprise cost values
+printf "CLAUDE_COST_OK=%s\n" "${CLAUDE_COST_OK:-}"
+printf "CLAUDE_COST_WARN=%s\n" "${CLAUDE_COST_WARN:-}"
+printf "CLAUDE_COST_CRIT=%s\n" "${CLAUDE_COST_CRIT:-}"
+printf "CLAUDE_COST_DELTA=%s\n" "${CLAUDE_COST_DELTA:-}"
+printf "CLAUDE_COST_TODAY=%s\n" "${CLAUDE_COST_TODAY:-}"
+printf "CLAUDE_COST_MONTH=%s\n" "${CLAUDE_COST_MONTH:-}"
 
 # Starship config
 printf "STARSHIP_CONFIG=%s\n" "${STARSHIP_CONFIG:-}"

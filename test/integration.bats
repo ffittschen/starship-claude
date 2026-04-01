@@ -9,7 +9,12 @@ load test_helper
 
   # All expected env vars should be set
   assert_env_set "CLAUDE_MODEL" "$output"
-  assert_env_set "CLAUDE_COST" "$output"
+  # Without rate_limits, cost uses the 3-var pattern (CLAUDE_COST_OK/WARN/CRIT)
+  local cost_ok cost_warn cost_crit
+  cost_ok=$(get_env_var "CLAUDE_COST_OK" "$output")
+  cost_warn=$(get_env_var "CLAUDE_COST_WARN" "$output")
+  cost_crit=$(get_env_var "CLAUDE_COST_CRIT" "$output")
+  [ -n "$cost_ok" ] || [ -n "$cost_warn" ] || [ -n "$cost_crit" ]
   assert_env_set "CLAUDE_CONTEXT" "$output"
   assert_env_set "CLAUDE_SESSION_ID" "$output"
   assert_env_set "STARSHIP_CONFIG" "$output"
@@ -93,19 +98,34 @@ load test_helper
 }
 
 @test "different cost levels produce valid formatted output" {
+  # These fixtures lack rate_limits, so cost uses CLAUDE_COST_OK/WARN/CRIT
+  # Helper to get whichever cost var is set
+  _get_cost() {
+    local o="$1"
+    local c
+    c=$(get_env_var "CLAUDE_COST_OK" "$o")
+    [ -n "$c" ] && { echo "$c"; return; }
+    c=$(get_env_var "CLAUDE_COST_WARN" "$o")
+    [ -n "$c" ] && { echo "$c"; return; }
+    c=$(get_env_var "CLAUDE_COST_CRIT" "$o")
+    [ -n "$c" ] && { echo "$c"; return; }
+    # Fallback for rate-limited fixtures
+    get_env_var "CLAUDE_COST" "$o"
+  }
+
   # Test zero cost
   output=$(run_with_fixture "zero_cost.json")
-  cost=$(get_env_var "CLAUDE_COST" "$output")
+  cost=$(_get_cost "$output")
   [[ -z "$cost" || "$cost" =~ ^\$[0-9]+\.[0-9]{2}$ ]]
 
   # Test medium cost
   output=$(run_with_fixture "medium_cost.json")
-  cost=$(get_env_var "CLAUDE_COST" "$output")
+  cost=$(_get_cost "$output")
   [[ "$cost" =~ ^\$[0-9]+\.[0-9]{2}$ ]]
 
   # Test high cost
   output=$(run_with_fixture "high_cost.json")
-  cost=$(get_env_var "CLAUDE_COST" "$output")
+  cost=$(_get_cost "$output")
   [[ "$cost" =~ ^\$[0-9]+\.[0-9]{2}$ ]]
 }
 

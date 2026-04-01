@@ -11,6 +11,12 @@ $git_branch$git_status \
 ${env_var.CLAUDE_MODEL} \
 ${env_var.CLAUDE_CONTEXT} \
 ${env_var.CLAUDE_COST}\
+${env_var.CLAUDE_COST_OK}\
+${env_var.CLAUDE_COST_WARN}\
+${env_var.CLAUDE_COST_CRIT}\
+${env_var.CLAUDE_COST_DELTA}\
+${env_var.CLAUDE_COST_TODAY}\
+${env_var.CLAUDE_COST_MONTH}\
 ${env_var.CLAUDE_BUDGET_5H_OK}\
 ${env_var.CLAUDE_BUDGET_5H_WARN}\
 ${env_var.CLAUDE_BUDGET_5H_CRIT}\
@@ -54,6 +60,40 @@ style = "fg:context"
 variable = "CLAUDE_COST"
 format = "[$env_value]($style)"
 style = "fg:cost"
+
+# Enterprise cost (3-var pattern: replaces CLAUDE_COST for enterprise/API users)
+[env_var.CLAUDE_COST_OK]
+variable = "CLAUDE_COST_OK"
+format = "[$env_value]($style)"
+style = "fg:budget_ok"
+
+[env_var.CLAUDE_COST_WARN]
+variable = "CLAUDE_COST_WARN"
+format = "[$env_value]($style)"
+style = "fg:budget_warn"
+
+[env_var.CLAUDE_COST_CRIT]
+variable = "CLAUDE_COST_CRIT"
+format = "[$env_value]($style)"
+style = "fg:budget_crit"
+
+# Per-prompt cost delta
+[env_var.CLAUDE_COST_DELTA]
+variable = "CLAUDE_COST_DELTA"
+format = "[ $env_value]($style)"
+style = "fg:budget_dim"
+
+# Daily cost total
+[env_var.CLAUDE_COST_TODAY]
+variable = "CLAUDE_COST_TODAY"
+format = "[ $env_value]($style)"
+style = "fg:budget_dim"
+
+# Monthly cost total
+[env_var.CLAUDE_COST_MONTH]
+variable = "CLAUDE_COST_MONTH"
+format = "[ $env_value]($style)"
+style = "fg:budget_dim"
 
 # Budget 5h (3-var pattern: only one is populated at a time)
 [env_var.CLAUDE_BUDGET_5H_OK]
